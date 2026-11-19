@@ -58,6 +58,7 @@ import { GameAudio } from "./audio";
 import { GameMusic } from "./music";
 import musicUrl from "./assets/audio/toy-city.mp3?url";
 import { CityModelAssets } from "./model-assets";
+import { M5StackShakeClient, ShakeTurnGate, type M5StackStatus, type M5StackTelemetry } from "./m5stack";
 import {
   createWelcomeMessages,
   replyAsLabu,
@@ -160,6 +161,51 @@ let roomClient: RoomClient | null = null,
   room: RoomSnapshot | null = null,
   roomSession: RoomSession | null = null,
   networkConnected = false;
+let m5Status: M5StackStatus = "disconnected";
+const m5ShakeTurnGate = new ShakeTurnGate();
+const m5ShakeTurnKey = () => `${state.seed}:${state.turn}:${current().id}`;
+const m5Stack = new M5StackShakeClient({
+  canShake: () => {
+    if (!started) return { ok: false, reason: "遊戲尚未開始" };
+    if (paused) return { ok: false, reason: "遊戲已暫停" };
+    if (m5ShakeTurnGate.hasUsed(m5ShakeTurnKey())) return { ok: false, reason: "本回合已使用 M5Stack 搖動擲骰" };
+    if (state.phase === "finished") return { ok: false, reason: "本局已結束" };
+    if (state.phase === "moving") return { ok: false, reason: "棋子移動中" };
+    if (state.phase !== "roll") return { ok: false, reason: "目前正在等待選項或操作" };
+    if (current().isNpc) return { ok: false, reason: "現在輪到 NPC" };
+    if (roomClient && (!networkConnected || room?.selfId !== current().id || room.pendingReclaim)) {
+      return { ok: false, reason: "不是你的回合或房間連線未就緒" };
+    }
+    return { ok: true };
+  },
+  onShake: () => {
+    if (m5ShakeTurnGate.consume(m5ShakeTurnKey())) {
+      toast("已收到 M5Stack 搖動，正在擲骰");
+      act({ type: "roll" });
+    }
+  },
+  onShakeBlocked: (reason) => toast(`M5Stack：${reason}`),
+  onTelemetry: (telemetry: M5StackTelemetry) => {
+    const status = $("#m5stack-status");
+    if (status && m5Status === "connected") {
+      status.textContent = `IMU 已讀取 · Δ ${telemetry.delta.toFixed(2)} g · 脈衝 ${telemetry.pulses}/3 · 事件 ${telemetry.events}`;
+    }
+  },
+  onStatus: (status, message) => {
+    m5Status = status;
+    if ($("#m5stack-status")) {
+      $("#m5stack-status").textContent = message;
+      const connect = $<HTMLButtonElement>("#m5stack-action");
+      if (connect) {
+        connect.disabled = status !== "disconnected";
+        connect.textContent = status === "connecting" ? "連線中…" : status === "connected" ? "已連接" : "連接裝置";
+      }
+      const disconnect = $<HTMLButtonElement>("#m5stack-disconnect");
+      if (disconnect) disconnect.disabled = status !== "connected";
+    }
+    if (status === "connected" || status === "unsupported" || status === "disconnected") toast(message);
+  },
+});
 let offlineBeforeRoom: {
   state: GameState;
   started: boolean;
@@ -1168,8 +1214,10 @@ function showHelp() {
 function showSettings() {
   showModal(
     modalHeader("MAKE YOURSELF AT HOME", "遊戲設定") +
-      `<div class="setting-row"><div><strong>可愛音效</strong><small>輕柔收款、付款、骰子與升級提示</small></div><button id="toggle-sound" class="chip" aria-pressed="${audio.enabled}">${audio.enabled ? "已開啟" : "已關閉"}</button></div><div class="setting-row"><div><strong>城市配樂</strong><small>輕快的玩具城市原創循環曲</small></div><button id="toggle-music" class="chip">${music.enabled ? "已開啟" : "已關閉"}</button></div><div class="setting-row"><div><strong>快速動畫</strong><small>縮短移動與 NPC 等待時間</small></div><button id="toggle-speed" class="chip">${fast ? "已開啟" : "已關閉"}</button></div><div class="setting-row"><div><strong>暫停遊戲</strong><small>暫停 NPC 與逐格移動</small></div><button id="toggle-pause" class="chip">${paused ? "繼續遊戲" : "暫停"}</button></div><div class="setting-row"><div><strong>輕量畫質</strong><small>降低像素密度與陰影負擔</small></div><button id="low-quality" class="chip">套用</button></div><div class="setting-row"><div><strong>存檔</strong><small>${roomClient ? "房間由本機伺服器管理，重啟不保留" : saveFailed ? "自動儲存不可用" : "每次操作自動保存在此瀏覽器"}</small></div><button id="export-save" class="chip">匯出</button></div><label class="import-label">匯入本機存檔<input id="import-save" type="file" accept="application/json,.json"></label><button id="new-game" class="secondary full">重新開局</button><p class="fine-print">${roomClient ? "目前使用本機連線房間。公開聊天由同桌玩家共享；私人 Labu 提醒只顯示在自己的頁面。" : "目前使用本機同桌模式，聊天只存在本次頁面。"} Labu 提醒仍為示範資料。</p>`,
+      `<div class="setting-row"><div><strong>可愛音效</strong><small>輕柔收款、付款、骰子與升級提示</small></div><button id="toggle-sound" class="chip" aria-pressed="${audio.enabled}">${audio.enabled ? "已開啟" : "已關閉"}</button></div><div class="setting-row"><div><strong>城市配樂</strong><small>輕快的玩具城市原創循環曲</small></div><button id="toggle-music" class="chip">${music.enabled ? "已開啟" : "已關閉"}</button></div><div class="setting-row"><div><strong>快速動畫</strong><small>縮短移動與 NPC 等待時間</small></div><button id="toggle-speed" class="chip">${fast ? "已開啟" : "已關閉"}</button></div><div class="setting-row"><div><strong>暫停遊戲</strong><small>暫停 NPC 與逐格移動</small></div><button id="toggle-pause" class="chip">${paused ? "繼續遊戲" : "暫停"}</button></div><div class="setting-row"><div><strong>M5Stack 搖動擲骰</strong><small id="m5stack-status">${m5Status === "connected" ? "M5Stack 已連線" : m5Status === "unsupported" ? "此瀏覽器不支援 Web Serial" : "未配對；斷線時仍可使用螢幕按鈕"}</small></div><button id="m5stack-action" class="chip" ${m5Status === "connected" || m5Status === "connecting" ? "disabled" : ""}>${m5Status === "connected" ? "已連接" : m5Status === "connecting" ? "連線中…" : "連接裝置"}</button><button id="m5stack-disconnect" class="chip" ${m5Status === "connected" ? "" : "disabled"}>斷線裝置</button></div><div class="setting-row"><div><strong>輕量畫質</strong><small>降低像素密度與陰影負擔</small></div><button id="low-quality" class="chip">套用</button></div><div class="setting-row"><div><strong>存檔</strong><small>${roomClient ? "房間由本機伺服器管理，重啟不保留" : saveFailed ? "自動儲存不可用" : "每次操作自動保存在此瀏覽器"}</small></div><button id="export-save" class="chip">匯出</button></div><label class="import-label">匯入本機存檔<input id="import-save" type="file" accept="application/json,.json"></label><button id="new-game" class="secondary full">重新開局</button><p class="fine-print">${roomClient ? "目前使用本機連線房間。公開聊天由同桌玩家共享；私人 Labu 提醒只顯示在自己的頁面。" : "目前使用本機同桌模式，聊天只存在本次頁面。"} Labu 提醒仍為示範資料。</p>`,
   );
+  $<HTMLButtonElement>("#m5stack-action").disabled = m5Status !== "disconnected";
+  $<HTMLButtonElement>("#m5stack-disconnect").disabled = m5Status !== "connected";
   $("#toggle-sound").onclick = () => { toggleSound(); $("#toggle-sound").textContent = audio.enabled ? "已開啟" : "已關閉"; $("#toggle-sound").setAttribute("aria-pressed", String(audio.enabled)); };
   $("#toggle-music").onclick = () => {
     void music.toggle().then((enabled) => {
@@ -1195,6 +1243,22 @@ function showSettings() {
     schedule();
     render();
     showSettings();
+  };
+  $("#m5stack-action").onclick = async () => {
+    try {
+      await m5Stack.connect();
+      showSettings();
+    } catch (error) {
+      if (m5Status !== "unsupported") toast(error instanceof Error ? error.message : "無法配對 M5Stack");
+    }
+  };
+  $("#m5stack-disconnect").onclick = async () => {
+    try {
+      await m5Stack.disconnect();
+      showSettings();
+    } catch (error) {
+      toast(`M5Stack 斷線失敗：${error instanceof Error ? error.message : String(error)}`);
+    }
   };
   $("#low-quality").onclick = () => {
     city?.setQuality(true);
