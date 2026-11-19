@@ -1694,6 +1694,6 @@ Object.defineProperty(window, "__LABU_DIAGNOSTICS__", {
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   navigator.serviceWorker
-    .register("/sw.js")
+    .register(`${import.meta.env.BASE_URL}sw.js`)
     .catch(() => console.warn("離線快取未能啟用，遊戲仍可在本機伺服器運作。"));
 }
