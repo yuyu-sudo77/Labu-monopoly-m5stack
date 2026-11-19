@@ -23,7 +23,7 @@ npm run test:e2e    # Playwright 瀏覽器測試，需安裝 Chrome
 
 ## 線上遊玩
 
-推送到 `main` 後，GitHub Actions 會建置並發布靜態遊戲到 [GitHub Pages](https://yuyu-sudo77.github.io/Labu-monopoly-m5stack/)。首次發布前，請在儲存庫 **Settings → Pages → Build and deployment** 將來源設為 **GitHub Actions**。發布完成後可使用上方網址；M5Stack Web Serial 需要支援的桌面瀏覽器與 HTTPS。此靜態網站提供本機同桌玩法，不包含公開多人房間伺服器。
+推送到 `main` 後，GitHub Actions 會啟用 Pages、建置並發布靜態遊戲到 [GitHub Pages](https://yuyu-sudo77.github.io/Labu-monopoly-m5stack/)。如果自動啟用失敗，請在儲存庫 **Settings → Pages → Build and deployment** 將來源設為 **GitHub Actions**。發布完成後可使用上方網址；M5Stack Web Serial 需要支援的桌面瀏覽器與 HTTPS。此靜態網站提供本機同桌玩法，不包含公開多人房間伺服器。
 
 新遊戲預設 20 輪，每位玩家持有 1,000 萬元現金和 200 萬元存款；開局時可選其他輪數或無限輪；無限輪只剩一位未破產玩家時結束。
 
